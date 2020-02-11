@@ -1,0 +1,267 @@
+package khModel;
+
+import sim.engine.SimState;
+import sim.engine.Steppable;
+import sim.engine.Stoppable;
+import sim.util.Bag;
+
+public class Agent implements Steppable {
+	int x;//x,y coordinates
+	int y;
+	int dirx;//the direction of movement
+	int diry;
+	//KH model
+	public boolean female;
+	public double attractiveness;
+	public double dates = 0;
+	public boolean dated = false;
+	public Stoppable event;
+
+	
+	public Agent(int x, int y, int dirx, int diry) {
+		super();
+		this.x = x;
+		this.y = y;
+		this.dirx = dirx;
+		this.diry = diry;
+	}
+	
+    public Agent(boolean female, double attractiveness) {
+		super();
+		this.female = female;
+		this.attractiveness = attractiveness;
+	}
+
+	public Agent(int x, int y, boolean female, double attractiveness) {
+		super();
+		this.x = x;
+		this.y = y;
+		this.female = female;
+		this.attractiveness = attractiveness;
+	}
+
+	public Agent findDate(Environment state) {
+		if(female ) {
+			if(state.male.numObjs==0)
+				return null;
+			return (Agent)state.male.objs[state.random.nextInt(state.male.numObjs)];
+		}
+		else {
+			if(state.female.numObjs==0)
+				return null;
+			return (Agent)state.female.objs[state.random.nextInt(state.female.numObjs)];
+		}
+	}
+	
+	public double ctRule(Environment state, double p) {
+		return Math.pow(p, (state.maxDates-dates)/state.maxDates);
+	}
+	
+	public double p1(Environment state, Agent a) {
+		return Math.pow(a.attractiveness, state.choosiness)/Math.pow(state.maxAttractiveness, state.choosiness);
+	}
+	
+	public double p2(Environment state, Agent a) {
+		return Math.pow(state.maxAttractiveness-Math.abs(this.attractiveness - a.attractiveness), state.choosiness)/
+				Math.pow(state.maxAttractiveness, state.choosiness);
+	}
+	
+	public double p3(Environment state, Agent a) {
+		return (p1(state,a)+p2(state,a))/2.0;
+	}
+	
+	public void remove(Environment state) {
+		if(female) 
+			state.female.remove(this);
+		else
+			state.male.remove(this);
+		state.space.remove(this);
+		event.stop();
+	}
+	
+	public void nextPopulationStep(Environment state) {
+		dated = true;
+		if(female) {
+			state.nextFemale.add(this);
+			state.female.remove(this);
+		}
+		else {
+			state.nextMale.add(this);
+			state.male.remove(this);
+		}
+	}
+	
+	public void dateNonSpatial(Environment state, Agent a) {
+		double p;
+		double q;
+		switch(state.rule) {
+		case ATTRACTIVE:
+			p = p1(state,a);
+			q = a.p1(state, this);
+			break;
+		case SIMILAR:
+			p = p2(state,a);
+			q = a.p2(state, this);
+			break;
+		case MIXED:
+			p = p3(state,a);
+			q = a.p3(state, this);
+			break;
+		default:
+			p = p1(state,a);
+			q = a.p1(state, this);
+			break;	
+		}
+		p = ctRule(state,p);
+		q = ctRule(state,q);
+
+		if(state.random.nextBoolean(p)&& state.random.nextBoolean(q)) {
+			if(female) {
+				state.experimenter.getData(this, a);
+			}
+			else {
+				state.experimenter.getData(a, this);
+			}
+			remove(state);
+			a.remove(state);
+		} //end if test
+		else {
+			this.nextPopulationStep(state);
+			a.nextPopulationStep(state);
+		}
+		if(dates < state.maxDates) {
+			dates++;
+		}
+		if(a.dates < state.maxDates) {
+			a.dates++;
+		}
+		
+	}
+	
+	public void date(Environment state) {
+		if(state.nonSpatialModel) {
+			Agent a = findDate(state);
+			if(a!= null) {
+				dateNonSpatial(state, a);
+			}
+		}
+		else {
+			
+		}
+	}
+
+	public void placeAgent(Environment state) {
+        if(state.oneCellPerAgent) {//only one agent per cell
+             int tempx = state.space.stx(x + dirx);//tempx and tempy location
+             int tempy = state.space.sty(y + diry);
+             Bag b = state.space.getObjectsAtLocation(tempx, tempy);
+             if(b == null){//if empty, agent moves to new location
+                   x = tempx;
+                   y = tempy;
+                   state.space.setObjectLocation(this, x, y);
+             }//otherwise it does not move.
+        }
+        else {               
+             x = state.space.stx(x + dirx);
+             y = state.space.sty(y + diry);
+             state.space.setObjectLocation(this, x, y);
+        }
+   }
+	/**
+	 * Agents move randomly to a new location for either one agent per cell or possibly
+	 * multiple agents per cell.
+	 * @param state
+	 */
+	public void move(Environment state) {
+		if(!state.random.nextBoolean(state.active)) {
+			return;
+		}
+		if(state.random.nextBoolean(state.p)) {
+			dirx = state.random.nextInt(3)-1;
+			diry = state.random.nextInt(3)-1;
+		}
+		placeAgent(state);
+	}
+	
+	public void simpleMove(Environment state) {
+		if(!state.random.nextBoolean(state.active)) {
+			return;
+		}
+		if(state.random.nextBoolean(state.p)) {
+			dirx = state.random.nextInt(3)-1;
+			diry = state.random.nextInt(3)-1;
+		}
+		x+= dirx;
+		y+= diry;
+		x = state.space.stx(x);
+		y = state.space.sty(y);
+		state.space.setObjectLocation(this, x, y);
+	}
+	
+	public int decideX(Environment state, Bag neighbors) {
+		int posX =0, negX =0;
+		for(int i=0;i<neighbors.numObjs;i++) {
+			Agent a = (Agent)neighbors.objs[i];
+			if(a.x > x) {
+				posX++;
+			}
+			else if(a.x < x) {
+				negX++;
+			}
+		}
+		if(posX > negX) {
+			return 1;
+		}
+		else if (negX > posX) {
+			return -1;
+		}
+		else {
+			return state.random.nextInt(3)-1;
+		}
+	}
+	
+	public int decideY(Environment state, Bag neighbors) {
+		int posY =0, negY =0;
+		for(int i=0;i<neighbors.numObjs;i++) {
+			Agent a = (Agent)neighbors.objs[i];
+			if(a.y > y) {
+				posY++;
+			}
+			else if(a.y < y) {
+				negY++;
+			}
+		}
+		if(posY > negY) {
+			return 1;
+		}
+		else if (negY > posY) {
+			return -1;
+		}
+		else {
+			return state.random.nextInt(3)-1;
+		}
+	}
+	
+	public void aggregate (Environment state) {
+		Bag b = state.space.getMooreNeighbors(x, y, state.searchRadius, state.space.TOROIDAL, false);
+		dirx = decideX(state,b);
+		diry = decideY(state,b);
+		placeAgent(state);
+	}
+
+	public void step(SimState state) {
+		Environment environment = (Environment)state;
+		if(!dated)
+			date(environment);
+		/*
+		if(environment.random.nextBoolean(environment.aggregate)) {
+			aggregate (environment);
+		}
+		else {
+			move(environment);
+		}
+		*/
+		
+	}
+
+}
