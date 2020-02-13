@@ -1,5 +1,8 @@
 package khModel;
 
+import java.util.ArrayList;
+import java.util.List;
+
 import sim.engine.SimState;
 import sim.engine.Steppable;
 import sim.engine.Stoppable;
@@ -11,11 +14,11 @@ public class Agent implements Steppable {
 	int dirx;//the direction of movement
 	int diry;
 	//KH model
-	public boolean female;
-	public double attractiveness;
-	public double dates = 0;
-	public boolean dated = false;
-	public Stoppable event;
+	public boolean female;//determines whether an agent is a female == true, male == false
+	public double attractiveness;//Attractiveness of this agent
+	public double dates = 0;//starts with 0 and incremented by 1 with each date.
+	public boolean dated = false;//flag for dating on each round
+	public Stoppable event;//allows to remove an agent from the simulation.
 
 	
 	public Agent(int x, int y, int dirx, int diry) {
@@ -39,11 +42,57 @@ public class Agent implements Steppable {
 		this.female = female;
 		this.attractiveness = attractiveness;
 	}
+     
+	/**
+	 * Finds a date for an agent of the opposite sex.
+	 * @param state
+	 * @return
+	 */
+	
+	public void replicate (Environment state, boolean gender){
+		//Your code here
+		if (gender) {
+			int x = state.random.nextInt(state.gridWidth);
+			int y = state.random.nextInt(state.gridHeight);
+			double attractiveness = state.random.nextInt((int)state.maxAttractiveness)+1;
+			Agent f = new Agent(x, y, true,attractiveness);
+			f.event = state.schedule.scheduleRepeating(f);
+			state.space.setObjectLocation(f,state.random.nextInt(state.gridWidth), state.random.nextInt(state.gridHeight));
+			state.gui.setOvalPortrayal2DColor(f, (float)1, (float)0, (float)0, (float)(attractiveness/state.maxAttractiveness));
+			state.female.add(f);
+		}
+		else {
+			int x = state.random.nextInt(state.gridWidth);
+			int y = state.random.nextInt(state.gridHeight);
+			double attractiveness = state.random.nextInt((int)state.maxAttractiveness)+1;
+			Agent m = new Agent(x, y, false,attractiveness);
+			m.event = state.schedule.scheduleRepeating(m);
+			state.space.setObjectLocation(m,state.random.nextInt(state.gridWidth), state.random.nextInt(state.gridHeight));
+			state.gui.setOvalPortrayal2DColor(m, (float)0, (float)0, (float)1, (float)(attractiveness/state.maxAttractiveness));
+			state.male.add(m);
+		}
 
+	}
+	
+	public Agent findLocalDate(Environment state) {
+		Bag agents = state.space.getMooreNeighbors(x, y, state.dateSearchRadius, state.space.TOROIDAL, false);
+
+
+		for (int i = 0; i < agents.size(); i++) {
+			int r = state.random.nextInt(agents.numObjs);
+			Agent a = (Agent)agents.objs[r];
+			if(!a.dated && female != a.female) {
+				return a;
+			}
+		
+	}
+		return null;
+	}
+	
 	public Agent findDate(Environment state) {
-		if(female ) {
+		if(female ) {//agent gender
 			if(state.male.numObjs==0)
-				return null;
+				return null;//if empty return null
 			return (Agent)state.male.objs[state.random.nextInt(state.male.numObjs)];
 		}
 		else {
@@ -52,11 +101,32 @@ public class Agent implements Steppable {
 			return (Agent)state.female.objs[state.random.nextInt(state.female.numObjs)];
 		}
 	}
-	
+	/**
+	 * KH closing time rule
+	 * @param state
+	 * @param p
+	 * @return
+	 */
 	public double ctRule(Environment state, double p) {
-		return Math.pow(p, (state.maxDates-dates)/state.maxDates);
+		double tempP = Math.pow(p, (state.maxDates-dates)/state.maxDates);
+		if (tempP < 0) 
+			return 0;
+		else 
+			return Math.pow(p, (state.maxDates-dates)/state.maxDates);
 	}
 	
+	public double ctRule(Environment state) {
+		if (dates> state.maxDates)
+			return 0;
+		else 
+			return (state.maxDates-dates)/state.maxDates;
+	}
+	/**
+	 * Attractiveness rule
+	 * @param state
+	 * @param a
+	 * @return
+	 */
 	public double p1(Environment state, Agent a) {
 		return Math.pow(a.attractiveness, state.choosiness)/Math.pow(state.maxAttractiveness, state.choosiness);
 	}
@@ -66,21 +136,43 @@ public class Agent implements Steppable {
 				Math.pow(state.maxAttractiveness, state.choosiness);
 	}
 	
+	public double p4(Environment state, Agent a) {
+		double ct = ctRule(state);
+		//System.out.println(ct);
+		return p1(state,a)*ct+p2(state,a)*(1-ct);
+	}
+	/**
+	 * Mixed rule
+	 * @param state
+	 * @param a
+	 * @return
+	 */
 	public double p3(Environment state, Agent a) {
 		return (p1(state,a)+p2(state,a))/2.0;
 	}
 	
 	public void remove(Environment state) {
-		if(female) 
-			state.female.remove(this);
-		else
+		if(female) {
+			
+			state.female.remove(this);//remove from the population
+			if(state.replacement) {
+			replicate(state,this.female);
+			}
+		}
+		else {
+			
 			state.male.remove(this);
-		state.space.remove(this);
-		event.stop();
+			if (state.replacement) {
+			replicate(state,this.female);
+			}
+		}
+		state.space.remove(this);//remove it from space
+		
+		event.stop();//remove from the schedule
 	}
 	
 	public void nextPopulationStep(Environment state) {
-		dated = true;
+		dated = true; //set dated to true.
 		if(female) {
 			state.nextFemale.add(this);
 			state.female.remove(this);
@@ -107,6 +199,10 @@ public class Agent implements Steppable {
 			p = p3(state,a);
 			q = a.p3(state, this);
 			break;
+		case RULE4:
+			p = p4(state,a);
+			q = a.p4(state, this);
+			break;
 		default:
 			p = p1(state,a);
 			q = a.p1(state, this);
@@ -115,7 +211,7 @@ public class Agent implements Steppable {
 		p = ctRule(state,p);
 		q = ctRule(state,q);
 
-		if(state.random.nextBoolean(p)&& state.random.nextBoolean(q)) {
+		if(state.random.nextBoolean(p)&& state.random.nextBoolean(q)) {//couple decison
 			if(female) {
 				state.experimenter.getData(this, a);
 			}
@@ -138,6 +234,10 @@ public class Agent implements Steppable {
 		
 	}
 	
+	/**
+	 * Handles dates for non-spatial and spatial models
+	 * @param state
+	 */
 	public void date(Environment state) {
 		if(state.nonSpatialModel) {
 			Agent a = findDate(state);
@@ -146,7 +246,10 @@ public class Agent implements Steppable {
 			}
 		}
 		else {
-			
+			Agent a = findLocalDate(state);
+			if(a!= null) {
+				dateNonSpatial(state, a);
+			}
 		}
 	}
 
@@ -251,17 +354,17 @@ public class Agent implements Steppable {
 
 	public void step(SimState state) {
 		Environment environment = (Environment)state;
-		if(!dated)
-			date(environment);
-		/*
+		
+		
 		if(environment.random.nextBoolean(environment.aggregate)) {
 			aggregate (environment);
 		}
 		else {
 			move(environment);
 		}
-		*/
 		
+		if(!dated)
+			date(environment);
 	}
 
 }

@@ -14,23 +14,26 @@ public class Environment extends SimState {
 	public boolean oneCellPerAgent = false;//controls whether agents can occupy the same place or not
 	public double aggregate = 0.0;//probability of aggregating
 	public int searchRadius = 1;// the radius or view of an agent when aggregating
+	public boolean replacement = false; //step 3
+	public int dateSearchRadius = 1;
+
 
 	/*
 	 * KH Model parameters
 	 */
-	public boolean nonSpatialModel = true;
-	public int males = 1000;
+	public boolean nonSpatialModel = false;//original non-spatial KH model
+	public int males = 1000;//size of the population of males
     public int females = 1000;
-    public double maxAttractiveness = 10;
-    public double choosiness =3;
-    public double maxDates = 50;
-    public Rule rule= Rule.ATTRACTIVE;
+    public double maxAttractiveness = 10;//maximum attractiveness
+    public double choosiness =3;//exponent in rule for calculating probabilities
+    public double maxDates = 50;//maximum number of dates.
+    public Rule rule= Rule.ATTRACTIVE;//Constant for the decision rules
     public int ruleNumber = 0;
     Experimenter experimenter = null;
     AgentGUI gui = null;
-    Bag male = new Bag();
-    Bag female = new Bag();
-    Bag nextMale = new Bag();
+    Bag male = new Bag();//the population males
+    Bag female = new Bag();//the current population of females
+    Bag nextMale = new Bag();//population of males for next step 
     Bag nextFemale = new Bag();
 
 	public Environment(long seed) {
@@ -169,7 +172,7 @@ public class Environment extends SimState {
 	 * Creates agents and places them in space and on the schedule.
 	 */
 	public void makeAgentsSpatial() {
-		for(int i=0;i<n;i++) {
+		 for(int i=0;i<females;i++) {
 			int x = random.nextInt(gridWidth);
 			int y = random.nextInt(gridHeight);
 			Object o = space.getObjectsAtLocation(x, y);
@@ -178,11 +181,37 @@ public class Environment extends SimState {
 				y = random.nextInt(gridHeight);
 				o = space.getObjectsAtLocation(x, y);
 			}
+			double attractiveness = random.nextInt((int)maxAttractiveness)+1;
 			int dirx  = random.nextInt(3)-1;
 			int diry = random.nextInt(3)-1;
-			Agent a = new Agent(x,y,dirx,diry);
-			space.setObjectLocation(a, x, y);
-			schedule.scheduleRepeating(a);
+			// Agent f = new Agent(x, y,dirx,diry, true,attractiveness);
+			Agent f = new Agent(x,y,dirx,diry);
+			f.female = true;
+			f.attractiveness = random.nextInt((int)maxAttractiveness)+1;
+			f.event = schedule.scheduleRepeating(f);
+			space.setObjectLocation(f,random.nextInt(gridWidth), random.nextInt(gridHeight));
+			gui.setOvalPortrayal2DColor(f, (float)1, (float)0, (float)0, (float)(attractiveness/maxAttractiveness));
+		}
+		
+		for(int i=0;i<males;i++) {
+			int x = random.nextInt(gridWidth);
+			int y = random.nextInt(gridHeight);
+			Object o = space.getObjectsAtLocation(x, y);
+			while(this.oneCellPerAgent && o!=null) {
+				x = random.nextInt(gridWidth);
+				y = random.nextInt(gridHeight);
+				o = space.getObjectsAtLocation(x, y);
+			}
+			double attractiveness = random.nextInt((int)maxAttractiveness)+1;
+			int dirx  = random.nextInt(3)-1;
+			int diry = random.nextInt(3)-1;
+			// Agent m = new Agent(x, y,dirx,diry, false,attractiveness);
+			Agent m = new Agent(x,y,dirx,diry);
+			m.female = false;
+			m.attractiveness = random.nextInt((int)maxAttractiveness)+1;
+			m.event = schedule.scheduleRepeating(m);
+			space.setObjectLocation(m,random.nextInt(gridWidth), random.nextInt(gridHeight));
+			gui.setOvalPortrayal2DColor(m, (float)0, (float)0, (float)1, (float)(attractiveness/maxAttractiveness));
 		}
 	}
 	
@@ -225,5 +254,15 @@ public class Environment extends SimState {
 		experimenter  = new Experimenter();
 		experimenter.event = schedule.scheduleRepeating(1, 2, experimenter);
 		makeAgents();
+	}
+
+
+	public boolean isReplacement() {
+		return replacement;
+	}
+
+
+	public void setReplacement(boolean replacement) {
+		this.replacement = replacement;
 	}
 }

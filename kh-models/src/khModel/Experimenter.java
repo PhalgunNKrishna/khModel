@@ -16,7 +16,12 @@ public class Experimenter implements Steppable {
 	double sXY = 0;
 	public Stoppable event;
 
-			
+		/**
+		 * Takes two agents and gets their attractiveness values and then does the 
+		 * calculation for preparing the data to calculate a correlation value	
+		 * @param x
+		 * @param y
+		 */
 	public void getData(Agent x, Agent y) {
 		getData(x.attractiveness, y.attractiveness);
 	}
@@ -51,7 +56,7 @@ public class Experimenter implements Steppable {
 	}
 	
 	public void populations(Environment state) {
-		Bag tempMale, tempFemale;
+		Bag tempMale, tempFemale;//temp bags to hold agents
 		tempMale = state.male;
 		tempFemale = state.female;
 		state.male = state.nextMale;
